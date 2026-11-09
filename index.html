@@ -43,6 +43,17 @@
   #tema{flex:none;background:rgba(255,255,255,.12);color:inherit;border:1px solid rgba(255,255,255,.25);
         padding:7px 14px;font-size:13px;border-radius:999px}
   #tema:hover{background:rgba(255,255,255,.22)}
+  .sessao{display:flex;align-items:center;gap:8px;flex:none}
+  .sessao[hidden]{display:none}
+  #usuario{font-size:12px;opacity:.85}
+  #btnSair{background:rgba(255,255,255,.12);color:inherit;border:1px solid rgba(255,255,255,.25);
+           padding:7px 14px;font-size:13px;border-radius:999px}
+  #btnSair:hover{background:rgba(255,255,255,.22)}
+  @media(max-width:600px){#usuario{display:none}}
+  .login{max-width:420px;margin:40px auto 60px;padding:0 16px}
+  .login .f{margin-bottom:12px}
+  .erro{color:var(--danger);font-size:13px;margin:4px 0 0}
+  .carregando{text-align:center;color:var(--muted);margin:60px 16px}
 
   .card{background:var(--card);border:1px solid var(--line);border-radius:var(--r);
         box-shadow:var(--shadow);padding:18px;margin-top:18px}
@@ -54,7 +65,7 @@
   .grid{display:grid;gap:12px 14px;grid-template-columns:repeat(12,1fr)}
   .f{display:flex;flex-direction:column;gap:4px;min-width:0}
   .f label{font-size:12px;font-weight:600;color:var(--muted)}
-  input[type=text],input[type=date],input[type=number],select,textarea{
+  input[type=text],input[type=email],input[type=password],input[type=date],input[type=number],select,textarea{
     padding:8px 10px;border:1px solid var(--line);border-radius:8px;font:inherit;background:var(--field);color:inherit;width:100%}
   textarea{resize:vertical;min-height:64px}
   input:focus,select:focus,textarea:focus{outline:2px solid rgba(31,95,158,.35);border-color:var(--brand)}
@@ -188,10 +199,29 @@
     <h1>Protocolo de Recebimento da Inscrição — Anexo II</h1>
     <p>Prefeitura Municipal de Dumont/SP · Preenchimento, pontuação e ranking de prioridade</p>
   </div>
+  <div class="sessao" id="sessao" hidden>
+    <span id="usuario"></span>
+    <button type="button" id="btnSair">Sair</button>
+  </div>
   <button type="button" id="tema" title="Alternar entre modo claro e noturno">Modo noturno</button>
 </div></header>
 
-<div class="wrap">
+<p class="carregando" id="carregando">Carregando…</p>
+
+<div class="login" id="telaLogin" hidden>
+  <form class="card" id="formLogin" novalidate>
+    <h2>Entrar</h2>
+    <p class="hint">Use o e-mail e a senha liberados pela coordenação.</p>
+    <div class="f"><label for="loginEmail">E-mail</label>
+      <input type="email" id="loginEmail" autocomplete="username" inputmode="email"></div>
+    <div class="f"><label for="loginSenha">Senha</label>
+      <input type="password" id="loginSenha" autocomplete="current-password"></div>
+    <p class="erro" id="loginErro" hidden></p>
+    <div class="bar"><button type="submit" class="btn-primary" id="btnEntrar">Entrar</button></div>
+  </form>
+</div>
+
+<div class="wrap" id="app" hidden>
 
 <form class="card" id="form" autocomplete="off" novalidate>
   <h2 id="formTitle">1 — Dados do Protocolo</h2>
@@ -237,7 +267,7 @@
     <input type="text" id="busca" placeholder="Buscar por nome ou número da inscrição..." style="max-width:320px">
     <button type="button" class="btn-ghost" id="btnCsv" title="Gera uma planilha que abre direto no Excel">Exportar Excel</button>
     <button type="button" class="btn-ghost" id="btnBackup">Salvar backup</button>
-    <button type="button" class="btn-ghost" id="btnRestore">Restaurar backup</button>
+    <button type="button" class="btn-ghost" id="btnRestore">Importar backup</button>
     <button type="button" class="btn-ghost" id="btnPrint">Imprimir ranking</button>
     <button type="button" class="btn-danger" id="btnZerar">Apagar tudo</button>
     <input type="file" id="fileIn" accept=".json" hidden>
@@ -283,6 +313,7 @@
 
 <div class="toast" id="toast"></div>
 
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script>
 /* ================= critérios, transcritos do Anexo II ================= */
 const DOCUMENTOS = [
@@ -335,8 +366,43 @@ const $$ = s => [].slice.call(document.querySelectorAll(s));
 const load = (k, f) => { try { const v = JSON.parse(localStorage.getItem(k)); return v === null ? f : v; } catch (e) { return f; } };
 const save = (k, v) => { try { localStorage.setItem(k, JSON.stringify(v)); } catch (e) {} };
 
-let pesos   = Object.assign({}, PESOS_PADRAO, load(K_W, {}));
-let pessoas = load(K_P, []);
+let pesos   = Object.assign({}, PESOS_PADRAO);
+let pessoas = [];
+
+/* ---------- banco de dados (Supabase) ---------- */
+const SB_URL = 'https://rsziwjbfiwmqgiirjjuk.supabase.co';
+const SB_KEY = 'sb_publishable_TUOsG-Kr1txIeht7Pc0QAA_4CpwuU3t';
+const sb = window.supabase ? window.supabase.createClient(SB_URL, SB_KEY) : null;
+let canal = null, usuarioAtual = null;
+
+const deDb = r => ({
+  id: r.id, inscricao: r.inscricao || '', nome: r.nome, data: r.data || '',
+  docs: r.docs || [], marcados: r.marcados || [], valores: r.valores || {},
+  obs: r.obs || '', criadoEm: r.criado_em
+});
+const paraDb = p => ({
+  inscricao: p.inscricao || '', nome: p.nome || '(sem nome)', data: p.data || null,
+  docs: p.docs || [], marcados: p.marcados || [], valores: p.valores || {}, obs: p.obs || ''
+});
+/* usado ao importar backup ou fichas antigas: mantém o registro e a ordem de cadastro */
+const paraDbComId = p => Object.assign({id: p.id ? String(p.id) : undefined, criado_em: p.criadoEm || undefined}, paraDb(p));
+
+function guardarLocal(p){
+  const i = pessoas.findIndex(x => x.id === p.id);
+  if (i > -1) pessoas[i] = p; else pessoas.push(p);
+}
+function falha(err, acao){
+  console.error(err);
+  toast('Não foi possível ' + (acao || 'salvar') + '. Verifique a internet e tente de novo.');
+}
+let tPesos = null;
+function salvarPesos(){
+  clearTimeout(tPesos);
+  tPesos = setTimeout(async () => {
+    const r = await sb.from('configuracao').update({pesos: pesos}).eq('id', 1);
+    if (r.error) falha(r.error, 'salvar os pesos');
+  }, 600);
+}
 let editId  = null;
 
 function toast(msg){
@@ -459,7 +525,7 @@ function renderPesos(){
   $$('#pesolist input').forEach(inp => inp.addEventListener('input', () => {
     const v = parseFloat(inp.value);
     pesos[inp.dataset.w] = isNaN(v) || v < 0 ? 0 : v;
-    save(K_W, pesos);
+    salvarPesos();
     refletirPesos(); calcAtual(); renderTabela();
   }));
 }
@@ -567,7 +633,7 @@ function limpar(){
   calcAtual();
 }
 
-$('#form').addEventListener('submit', e => {
+$('#form').addEventListener('submit', async e => {
   e.preventDefault();
   const dados = {
     inscricao: $('#inscricao').value.trim(),
@@ -578,19 +644,24 @@ $('#form').addEventListener('submit', e => {
     marcados: marcados(),
     valores: valores()
   };
-  if (editId){
-    const i = pessoas.findIndex(p => p.id === editId);
-    pessoas[i] = Object.assign(pessoas[i], dados);
-    toast('Ficha de ' + dados.nome + ' atualizada.');
-  } else {
-    dados.id = Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
-    dados.criadoEm = new Date().toISOString();
-    pessoas.push(dados);
-    toast(dados.nome + ' adicionado(a) com ' + ptLabel(pontos(dados)) + '.');
+  const btn = $('#btnSalvar');
+  btn.disabled = true;
+  try {
+    const q = editId
+      ? sb.from('fichas').update(paraDb(dados)).eq('id', editId)
+      : sb.from('fichas').insert(paraDb(dados));
+    const r = await q.select().single();
+    if (r.error) throw r.error;
+    guardarLocal(deDb(r.data));
+    toast(editId ? 'Ficha de ' + dados.nome + ' atualizada.'
+                 : dados.nome + ' adicionado(a) com ' + ptLabel(pontos(dados)) + '.');
+    limpar(); renderTabela();
+    $('#form').scrollIntoView({behavior:'smooth', block:'start'});
+  } catch (err) {
+    falha(err, 'salvar a ficha');
+  } finally {
+    btn.disabled = false;
   }
-  save(K_P, pessoas);
-  limpar(); renderTabela();
-  $('#form').scrollIntoView({behavior:'smooth', block:'start'});
 });
 
 $('#btnLimpar').onclick = limpar;
@@ -623,7 +694,7 @@ $('#tema').textContent =
 
 $('#resetPesos').onclick = () => {
   pesos = Object.assign({}, PESOS_PADRAO);
-  save(K_W, pesos);
+  salvarPesos();
   renderPesos(); refletirPesos(); calcAtual(); renderTabela();
   toast('Pesos restaurados: 10 pontos por item.');
 };
@@ -635,6 +706,7 @@ $('#tbody').addEventListener('click', e => {
   if (ver){ e.preventDefault(); detalhes(ver.dataset.ver); }
   if (ed){
     const p = pessoas.find(x => x.id === ed.dataset.edit);
+    if (!p) return;
     editId = p.id; preencher(p);
     $('#formTitle').textContent = '1 — Editando: ' + p.nome;
     $('#btnSalvar').textContent = 'Salvar alterações';
@@ -643,10 +715,12 @@ $('#tbody').addEventListener('click', e => {
   }
   if (del){
     const p = pessoas.find(x => x.id === del.dataset.del);
-    perguntar('Excluir a ficha de "' + p.nome + '"?', 'Excluir').then(ok => {
+    if (!p) return;
+    perguntar('Excluir a ficha de "' + p.nome + '"?', 'Excluir').then(async ok => {
       if (!ok) return;
+      const r = await sb.from('fichas').delete().eq('id', p.id);
+      if (r.error) return falha(r.error, 'excluir a ficha');
       pessoas = pessoas.filter(x => x.id !== p.id);
-      save(K_P, pessoas);
       if (editId === p.id) limpar();
       renderTabela(); toast('Ficha excluída.');
     });
@@ -655,6 +729,7 @@ $('#tbody').addEventListener('click', e => {
 
 function detalhes(id){
   const p = pessoas.find(x => x.id === id);
+  if (!p) return;
   const v = p.valores || {};
   $('#dlgNome').textContent = p.nome + ' — ' + ptLabel(pontos(p)) + ' de ' + pontosMax();
 
@@ -713,17 +788,17 @@ $('#txtImportar').onclick = () => { aplicarBackup($('#txtArea').value); };
 
 function aplicarBackup(texto){
   let d;
-  try { d = JSON.parse(texto); } catch (e) { toast('O texto não é um backup válido.'); return; }
+  try { d = JSON.parse(texto); } catch (e) { toast('O arquivo não é um backup válido.'); return; }
   if (!d || !Array.isArray(d.pessoas)){ toast('O backup não tem a lista de fichas.'); return; }
-  perguntar('Substituir todos os dados atuais pelo backup (' + d.pessoas.length + ' fichas)?', 'Substituir')
-    .then(ok => {
+  perguntar('Importar ' + d.pessoas.length + ' ficha(s) do backup para a lista? Fichas que já estão na lista são atualizadas, as demais continuam como estão.', 'Importar')
+    .then(async ok => {
       if (!ok) return;
-      pessoas = d.pessoas;
-      pesos = Object.assign({}, PESOS_PADRAO, d.pesos || {});
-      save(K_P, pessoas); save(K_W, pesos);
-      renderPesos(); refletirPesos(); limpar(); renderTabela();
+      const r = await sb.from('fichas').upsert(d.pessoas.map(paraDbComId), {defaultToNull: false});
+      if (r.error) return falha(r.error, 'importar o backup');
+      if (d.pesos){ pesos = Object.assign({}, PESOS_PADRAO, d.pesos); salvarPesos(); }
       $('#dlgTxt').close();
-      toast('Backup restaurado.');
+      await carregar();
+      toast('Backup importado.');
     });
 }
 
@@ -770,17 +845,134 @@ $('#fileIn').onchange = e => {
 $('#btnPrint').onclick = () => window.print();
 $('#btnZerar').onclick = () => {
   if (!pessoas.length) return toast('A lista já está vazia.');
-  perguntar('Apagar TODAS as ' + pessoas.length + ' fichas? Esta ação não pode ser desfeita.', 'Apagar tudo')
-    .then(ok => {
+  perguntar('Apagar TODAS as ' + pessoas.length + ' fichas da lista compartilhada, para todos os usuários? Salve um backup antes. Esta ação não pode ser desfeita.', 'Apagar tudo')
+    .then(async ok => {
       if (!ok) return;
-      pessoas = []; save(K_P, pessoas); limpar(); renderTabela(); toast('Lista apagada.');
+      const r = await sb.from('fichas').delete().not('id', 'is', null);
+      if (r.error) return falha(r.error, 'apagar a lista');
+      pessoas = []; limpar(); renderTabela(); toast('Lista apagada.');
     });
 };
+
+/* ---------- sincronização ---------- */
+async function carregar(){
+  const res = await Promise.all([
+    sb.from('fichas').select('*').order('criado_em'),
+    sb.from('configuracao').select('pesos').eq('id', 1).maybeSingle()
+  ]);
+  if (res[0].error) return falha(res[0].error, 'carregar a lista');
+  pessoas = res[0].data.map(deDb);
+  if (!res[1].error && res[1].data) pesos = Object.assign({}, PESOS_PADRAO, res[1].data.pesos || {});
+  renderPesos(); refletirPesos(); calcAtual(); renderTabela();
+}
+
+function assinar(){
+  if (canal) return;
+  canal = sb.channel('triagem')
+    .on('postgres_changes', {event: '*', schema: 'public', table: 'fichas'}, ev => {
+      if (ev.eventType === 'DELETE'){
+        const id = ev.old && ev.old.id;
+        pessoas = pessoas.filter(x => x.id !== id);
+        if (editId && editId === id){ limpar(); toast('A ficha em edição foi excluída por outro usuário.'); }
+      } else {
+        guardarLocal(deDb(ev.new));
+      }
+      renderTabela();
+    })
+    .on('postgres_changes', {event: 'UPDATE', schema: 'public', table: 'configuracao'}, ev => {
+      pesos = Object.assign({}, PESOS_PADRAO, ev.new.pesos || {});
+      if (!$('#pesolist').contains(document.activeElement)) renderPesos();
+      refletirPesos(); calcAtual(); renderTabela();
+    })
+    .subscribe();
+}
+
+/* fichas salvas neste navegador antes da lista compartilhada */
+async function migrarLocal(){
+  const locais = load(K_P, []);
+  if (!Array.isArray(locais) || !locais.length) return;
+  const ok = await perguntar('Este navegador tem ' + locais.length + ' ficha(s) salva(s) antes da lista compartilhada. Enviar para a lista de todos?', 'Enviar');
+  if (!ok) return;
+  const r = await sb.from('fichas').upsert(locais.map(paraDbComId), {defaultToNull: false});
+  if (r.error) return falha(r.error, 'enviar as fichas');
+  save(K_P + '.enviado', locais);
+  try { localStorage.removeItem(K_P); } catch (e) {}
+  await carregar();
+  toast(locais.length + ' ficha(s) enviada(s) para a lista.');
+}
+
+function tela(qual){
+  $('#carregando').hidden = qual !== 'carregando';
+  $('#telaLogin').hidden = qual !== 'login';
+  $('#app').hidden = qual !== 'app';
+  $('#sessao').hidden = qual !== 'app';
+}
+function erroLogin(msg){
+  $('#loginErro').textContent = msg || '';
+  $('#loginErro').hidden = !msg;
+}
+
+async function entrarNoApp(session){
+  if (usuarioAtual === session.user.id) return;
+  const r = await sb.rpc('eh_equipe');
+  if (r.error){ tela('login'); erroLogin('Não foi possível conferir o acesso. Verifique a internet e tente de novo.'); return; }
+  if (!r.data){
+    const email = session.user.email;
+    await sb.auth.signOut();
+    tela('login');
+    erroLogin('O e-mail ' + email + ' não está autorizado. Peça para a coordenação liberar o acesso.');
+    return;
+  }
+  usuarioAtual = session.user.id;
+  $('#usuario').textContent = session.user.email;
+  erroLogin('');
+  tela('app');
+  await carregar();
+  assinar();
+  migrarLocal();
+}
+function sairDoApp(){
+  usuarioAtual = null;
+  if (canal){ sb.removeChannel(canal); canal = null; }
+  pessoas = []; limpar(); renderTabela();
+  tela('login');
+}
+
+$('#formLogin').addEventListener('submit', async e => {
+  e.preventDefault();
+  const email = $('#loginEmail').value.trim(), senha = $('#loginSenha').value;
+  if (!email || !senha) return erroLogin('Preencha o e-mail e a senha.');
+  $('#btnEntrar').disabled = true; erroLogin('');
+  const r = await sb.auth.signInWithPassword({email: email, password: senha});
+  $('#btnEntrar').disabled = false;
+  if (r.error){
+    erroLogin(/invalid/i.test(r.error.message) ? 'E-mail ou senha incorretos.' : 'Não foi possível entrar. Verifique a internet e tente de novo.');
+    return;
+  }
+  $('#loginSenha').value = '';
+});
+$('#btnSair').onclick = () => sb.auth.signOut();
+
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState === 'visible' && usuarioAtual) carregar();
+});
 
 /* ---------- início ---------- */
 render('#documentos', DOCUMENTOS, false);
 render('#criterios', CRITERIOS, true);
 renderPesos(); refletirPesos(); limpar(); renderTabela();
+
+if (!sb){
+  $('#carregando').textContent = 'Não foi possível carregar o sistema. Verifique a internet e recarregue a página.';
+} else {
+  sb.auth.onAuthStateChange((ev, session) => {
+    /* chamadas ao banco fora do callback, como pede a biblioteca */
+    setTimeout(() => {
+      if (session) entrarNoApp(session);
+      else if (ev === 'SIGNED_OUT' || ev === 'INITIAL_SESSION') sairDoApp();
+    }, 0);
+  });
+}
 </script>
 </body>
 </html>
