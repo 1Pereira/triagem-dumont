@@ -217,7 +217,7 @@
   <details class="pesos">
     <summary>Ajustar pesos dos critérios</summary>
     <div class="painel">
-      <p class="hint">Padrão: 10 pontos por item marcado. Criança ou adolescente e membros idosos valem 10 por pessoa, conforme a quantidade marcada (04 ou mais conta 4). Os tipos e a quantidade de pessoas com deficiência estão em 0 porque só detalham o item; se pontuarem no seu processo, é só alterar aqui. A mudança recalcula automaticamente todas as fichas já cadastradas.</p>
+      <p class="hint">Padrão: 10 pontos por item marcado. Criança ou adolescente, membros idosos e pessoas com deficiência valem 10 por pessoa, conforme a quantidade marcada (04 ou mais conta 4). Os tipos de deficiência estão em 0 porque só detalham o item; se pontuarem no seu processo, é só alterar aqui. A mudança recalcula automaticamente todas as fichas já cadastradas.</p>
       <div class="pesolist" id="pesolist"></div>
       <button type="button" class="btn-ghost" id="resetPesos" style="margin-top:12px">Restaurar pesos padrão</button>
     </div>
@@ -302,7 +302,7 @@ const CRITERIOS = [
   {id:'c4', curto:'Idosos na família', porQtd:'c4q', txt:'Membros da família idosos.', peso:10,
    subs:[{id:'c4q', rot:'Idosos na família', tipo:'qtd', opcoes:QTD, peso:0}]},
   {id:'c5', curto:'Violência doméstica', txt:'Mulher vítima de violência doméstica e familiar.', doc:'xerox do boletim de ocorrência ou equivalente', peso:10},
-  {id:'c6', curto:'Pessoa com deficiência', txt:'Pessoa com deficiência.', doc:'xerox do laudo médico atualizado', peso:10,
+  {id:'c6', curto:'Pessoa com deficiência', porQtd:'c6q', txt:'Pessoa com deficiência.', doc:'xerox do laudo médico atualizado', peso:10,
    subs:[{id:'c6t', rot:'Tipo de deficiência', tipo:'tipos', opcoes:['Física','Mental','Espectro autista'], peso:0},
          {id:'c6q', rot:'Pessoas com deficiência na família', tipo:'qtd', opcoes:QTD, peso:0}]},
   {id:'c7', curto:'Câncer/doença rara', txt:'Pessoa com câncer ou doença rara crônica e degenerativa.', doc:'laudo médico atualizado com CID, grau de comprometimento e registro no órgão de classe, emitido há no máximo 24 meses', peso:10},
